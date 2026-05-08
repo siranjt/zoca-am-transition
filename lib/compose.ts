@@ -7,7 +7,7 @@ import {
   fetchHealth, fetchOpenIssues, fetchCommsSummary, fetchHandoverBrief,
   fetchMixpanelUsage, fetchLocationInsights, fetchGbpAudit,
   fetchGbpMetricsTrend, fetchRankings, fetchReviews12w,
-  fetchGbpLocations, fetchPlaceDetails, fetchLeadsYTD,
+  fetchGbpLocations, fetchPlaceDetails, fetchLeadsYTD, fetchAmHistory,
 } from './fetchers';
 import { fetchBillingData, type BillingForCustomer } from './chargebeeFetch';
 import { podForAm } from './pods';
@@ -52,23 +52,35 @@ const MIXPANEL_EVENTS = {
   reviewInvite: 'Review-Click-SendInviteSingle',
 } as const;
 
+export interface AmCapacity {
+  am: string;
+  current: number;        // current customers assigned
+  capacity: number;       // hard cap (130 default)
+  pct: number;            // current / capacity * 100
+  over: boolean;          // true if at or over capacity
+}
+
 export interface ComposedDataset {
   generated_at: string;
   customers: CustomerRow[];
   ams: string[];
+  capacities: AmCapacity[];
+  capacity_max: number;
 }
+
+export const AM_CAPACITY_MAX = 130;
 
 export async function composeDataset(): Promise<ComposedDataset> {
   // Step 1: BaseSheet (active customers)
   const base = await fetchActiveCustomers();
   const eids = base.map((c) => c.entity_id);
-  if (eids.length === 0) return { generated_at: new Date().toISOString(), customers: [], ams: [] };
+  if (eids.length === 0) return { generated_at: new Date().toISOString(), customers: [], ams: [], capacities: [], capacity_max: AM_CAPACITY_MAX };
 
   // Step 2: parallel Metabase + Chargebee pulls (Chargebee is cached for 10 min)
   const [
     health, issues, commsSummary, handover, mixpanel,
     insights, audits, metrics, rankings, reviews,
-    locs, pds, leads, billing,
+    locs, pds, leads, billing, amHistory,
   ] = await Promise.all([
     fetchHealth(eids).catch(() => []),
     fetchOpenIssues(eids).catch(() => []),
@@ -84,6 +96,7 @@ export async function composeDataset(): Promise<ComposedDataset> {
     fetchPlaceDetails(eids).catch(() => []),
     fetchLeadsYTD(eids).catch(() => []),
     fetchBillingData().catch((e) => { console.error('[chargebee]', e); return {} as Record<string, BillingForCustomer>; }),
+    fetchAmHistory(eids).catch(() => []),
   ]);
 
   // Index helpers
@@ -116,6 +129,7 @@ export async function composeDataset(): Promise<ComposedDataset> {
   const idxLocs = indexBy(locs as any);
   const idxPd = indexBy(pds as any);
   const idxLeads = groupBy(leads as any);
+  const idxAmHist = groupBy(amHistory as any);
 
   const today = new Date();
   const currentMonthStr = today.toISOString().slice(0, 7);
@@ -126,6 +140,12 @@ export async function composeDataset(): Promise<ComposedDataset> {
     const tickets = (idxIssues.get(eid) || []) as any[];
     const open = tickets.filter((t) => String(t.status || '').toUpperCase() === 'UNRESOLVED');
     const high = open.filter((t) => String(t.priority_type || '').toUpperCase() === 'HIGH');
+    const resolvedHistory = tickets.filter((t) => String(t.status || '').toUpperCase() !== 'UNRESOLVED');
+
+    // AM history (distinct AMs ever assigned, in chronological order)
+    const amHistRows = (idxAmHist.get(eid) || []) as any[];
+    const sortedAm = [...amHistRows].sort((a, b) => String(a.first_assigned).localeCompare(String(b.first_assigned)));
+    const amHistoryNames = Array.from(new Set(sortedAm.map((r) => String(r.am_name || '').trim()).filter(Boolean)));
 
     const mp = (idxMix.get(eid) || []) as any[];
     const eventCount = (name: string) => {
@@ -197,6 +217,8 @@ export async function composeDataset(): Promise<ComposedDataset> {
     if (bill?.auto_collection === 'off') risks.push('Auto-debit OFF (manual pay)');
     if (bill && bill.unpaid_invoice_count > 0) risks.push(`${bill.unpaid_invoice_count} unpaid invoice(s) · $${(bill.unpaid_total_cents / 100).toFixed(0)}`);
     if (bill?.cancel_scheduled_at) risks.push('Cancellation scheduled');
+    if (amHistoryNames.length >= 3) risks.push(`AM churn: ${amHistoryNames.length} AMs assigned previously`);
+    if (resolvedHistory.length >= 5) risks.push(`History: ${resolvedHistory.length} resolved tickets`);
 
     return {
       entity_id: eid,
@@ -223,6 +245,8 @@ export async function composeDataset(): Promise<ComposedDataset> {
 
       tickets_open_count: open.length,
       tickets_high_priority_count: high.length,
+      tickets_resolved_history_count: resolvedHistory.length,
+      tickets_total_history_count: tickets.length,
 
       engagement_tier: engTier,
       app_opens_90d: eventCount(MIXPANEL_EVENTS.appOpens),
@@ -235,9 +259,14 @@ export async function composeDataset(): Promise<ComposedDataset> {
       ytd_leads: ytdTotal,
       ytd_booked: ytdBooked,
       review_target: idxIns.get(eid) ? Number((idxIns.get(eid) as any).review_target || 0) : null,
+      predicted_6mo_leads: idxIns.get(eid) ? Number((idxIns.get(eid) as any).predicted_6_month_leads || 0) || null : null,
+      predicted_6mo_revenue: idxIns.get(eid) ? Number((idxIns.get(eid) as any).predicted_6_month_revenue || 0) || null : null,
       active_keywords: activeKw,
       click_dip_pct: dipPct,
       click_peak_month: peakMonth,
+
+      am_history_count: amHistoryNames.length,
+      am_history_names: amHistoryNames,
 
       risks,
       dormant_flag: engTier === 'Dormant',
@@ -258,5 +287,28 @@ export async function composeDataset(): Promise<ComposedDataset> {
   });
 
   const ams = Array.from(new Set(customers.map((c) => c.am_name))).sort();
-  return { generated_at: new Date().toISOString(), customers, ams };
+
+  // AM capacity (counts include incoming AMs like Taanya — show 0 / 130)
+  const capCounts = new Map<string, number>();
+  for (const c of customers) {
+    capCounts.set(c.am_name, (capCounts.get(c.am_name) || 0) + 1);
+  }
+  // Ensure incoming AMs are listed too
+  const { ALL_DROPDOWN_AMS } = await import('./pods');
+  for (const a of ALL_DROPDOWN_AMS) if (!capCounts.has(a)) capCounts.set(a, 0);
+  const capacities: AmCapacity[] = Array.from(capCounts.entries())
+    .map(([am, current]) => ({
+      am,
+      current,
+      capacity: AM_CAPACITY_MAX,
+      pct: Math.round((current / AM_CAPACITY_MAX) * 100),
+      over: current >= AM_CAPACITY_MAX,
+    }))
+    .sort((a, b) => b.current - a.current);
+
+  return {
+    generated_at: new Date().toISOString(),
+    customers, ams, capacities,
+    capacity_max: AM_CAPACITY_MAX,
+  };
 }

@@ -30,6 +30,8 @@ export interface CustomerRow {
   // Tickets
   tickets_open_count: number;
   tickets_high_priority_count: number;
+  tickets_resolved_history_count: number;
+  tickets_total_history_count: number;
 
   // Product usage
   engagement_tier: EngagementTier;
@@ -44,9 +46,15 @@ export interface CustomerRow {
   ytd_leads: number;
   ytd_booked: number;
   review_target: number | null;
+  predicted_6mo_leads: number | null;        // INTERNAL marker only
+  predicted_6mo_revenue: number | null;      // INTERNAL marker only
   active_keywords: number;
   click_dip_pct: number | null;
   click_peak_month: string | null;
+
+  // AM history
+  am_history_count: number;        // distinct AMs ever assigned
+  am_history_names: string[];      // distinct AM names in chronological order
 
   // Risks
   risks: string[];

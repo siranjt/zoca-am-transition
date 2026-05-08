@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CustomerRow } from '@/lib/types';
 import { ALL_PODS, ALL_DROPDOWN_AMS, ACTIVE_AMS } from '@/lib/pods';
 
-interface DashboardData { generated_at: string; customers: CustomerRow[]; ams: string[] }
+interface AmCapacity { am: string; current: number; capacity: number; pct: number; over: boolean }
+interface DashboardData {
+  generated_at: string;
+  customers: CustomerRow[];
+  ams: string[];
+  capacities: AmCapacity[];
+  capacity_max: number;
+}
 
 const STORAGE_KEY = 'zoca_am_transition_app_v1';
 
@@ -113,6 +120,20 @@ export default function Dashboard() {
   const moving = rows.filter((c) => getMovingTo(c.entity_id)).length;
   const selected = selectedEid ? data.customers.find((c) => c.entity_id === selectedEid) : null;
 
+  // Projected capacity given current Moving To assignments (browser localStorage)
+  const projected = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const cap of data.capacities) map.set(cap.am, cap.current);
+    for (const c of data.customers) {
+      const mt = getMovingTo(c.entity_id);
+      if (!mt || mt === '— Keep —' || mt === c.am_name) continue;
+      // remove from old AM, add to new
+      map.set(c.am_name, (map.get(c.am_name) || 0) - 1);
+      map.set(mt, (map.get(mt) || 0) + 1);
+    }
+    return map;
+  }, [data, state]);
+
   return (
     <div className="min-h-screen">
       <header className="bg-gradient-to-br from-zoca-blue to-zoca-accent text-white p-5 shadow-md">
@@ -130,6 +151,31 @@ export default function Dashboard() {
           <Tile label="Active app users" value={active.toString()} variant="green" />
           <Tile label="Open tickets" value={tickets.toString()} variant="amber" />
           <Tile label="Marked for handoff" value={moving.toString()} variant="blue" />
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-3 mb-3">
+          <div className="text-[10px] uppercase tracking-wide font-bold text-zoca-blue mb-2">AM Capacity (max {data.capacity_max} per AM)</div>
+          <div className="flex flex-wrap gap-2">
+            {data.capacities.map((cap) => {
+              const proj = projected.get(cap.am) ?? cap.current;
+              const projPct = Math.round((proj / data.capacity_max) * 100);
+              const projOver = proj >= data.capacity_max;
+              const changed = proj !== cap.current;
+              return (
+                <div key={cap.am} className={`min-w-[150px] flex-1 bg-slate-50 rounded p-2 border ${projOver ? 'border-red-400' : 'border-slate-200'}`}>
+                  <div className="text-[11px] font-semibold text-slate-700 truncate">{cap.am}</div>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-base font-bold ${projOver ? 'text-red-600' : projPct >= 90 ? 'text-amber-600' : 'text-zoca-blue'}`}>{proj}</span>
+                    <span className="text-[10px] text-slate-500">/ {data.capacity_max}</span>
+                    {changed && <span className="text-[10px] text-orange-700 ml-1">({proj > cap.current ? '+' : ''}{proj - cap.current})</span>}
+                  </div>
+                  <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
+                    <div className={`h-full ${projOver ? 'bg-red-500' : projPct >= 90 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, projPct)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3 mb-3 flex flex-wrap gap-2 items-center text-sm">
@@ -208,6 +254,8 @@ export default function Dashboard() {
               c={selected}
               movingTo={getMovingTo(selected.entity_id)}
               notes={getNotes(selected.entity_id)}
+              projected={projected}
+              capacityMax={data.capacity_max}
               onMovingChange={(v) => saveState({ ...state, [selected.entity_id]: { ...state[selected.entity_id], moving_to: v } })}
               onNotesChange={(v) => saveState({ ...state, [selected.entity_id]: { ...state[selected.entity_id], notes: v } })}
               onClose={() => setSelectedEid(null)}
@@ -257,10 +305,14 @@ function SelectKv({ label, value, onChange, options }: { label: string; value: s
   );
 }
 
-function DetailPanel({ c, movingTo, notes, onMovingChange, onNotesChange, onClose }: {
+function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChange, onNotesChange, onClose }: {
   c: CustomerRow; movingTo: string; notes: string;
+  projected: Map<string, number>; capacityMax: number;
   onMovingChange: (v: string) => void; onNotesChange: (v: string) => void; onClose: () => void;
 }) {
+  const targetLoad = movingTo && movingTo !== '— Keep —' ? projected.get(movingTo) ?? 0 : null;
+  const targetWillExceed = targetLoad != null && targetLoad > capacityMax;
+
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-4 sticky top-3 max-h-[calc(100vh-24px)] overflow-y-auto relative">
       <button onClick={onClose} className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
@@ -281,6 +333,13 @@ function DetailPanel({ c, movingTo, notes, onMovingChange, onNotesChange, onClos
             {ALL_DROPDOWN_AMS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
+        {targetLoad != null && (
+          <div className={`mt-2 text-xs px-2 py-1 rounded ${targetWillExceed ? 'bg-red-100 text-red-700 font-semibold' : 'bg-slate-100 text-slate-700'}`}>
+            {targetWillExceed && '⚠ '}
+            {movingTo}'s projected load: {targetLoad} / {capacityMax}
+            {targetWillExceed && ` — exceeds capacity by ${targetLoad - capacityMax}`}
+          </div>
+        )}
       </Section>
 
       <Section title="Risks & signals">
@@ -312,7 +371,24 @@ function DetailPanel({ c, movingTo, notes, onMovingChange, onNotesChange, onClos
           <Cell label="Active keywords" value={String(c.active_keywords)} />
           <Cell label="GBP click dip" value={c.click_dip_pct == null ? '—' : `${c.click_dip_pct.toFixed(0)}%`} red={c.click_dip_pct != null && c.click_dip_pct >= 30} />
           <Cell label="Click peak" value={c.click_peak_month || '—'} />
+          <Cell label="6mo Lead Prediction" value={c.predicted_6mo_leads == null ? '—' : String(c.predicted_6mo_leads)} />
+          <Cell label="6mo Revenue Prediction" value={c.predicted_6mo_revenue == null ? '—' : `$${Math.round(c.predicted_6mo_revenue).toLocaleString()}`} />
         </div>
+        <div className="mt-1 text-[10px] text-slate-400 italic">Predictions are internal-only. Do not surface to customers.</div>
+      </Section>
+
+      <Section title="AM history">
+        <div className="text-xs">
+          <strong>{c.am_history_count}</strong> distinct AM{c.am_history_count === 1 ? '' : 's'} ever assigned
+          {c.am_history_count >= 3 && <span className="text-red-600 font-bold ml-1">⚠ AM churn</span>}
+        </div>
+        {c.am_history_names.length > 0 && (
+          <div className="text-xs text-slate-700 mt-1">
+            {c.am_history_names.map((n, i) => (
+              <span key={i}>{i > 0 && <span className="text-slate-400"> → </span>}<span className={n === c.am_name ? 'font-semibold text-zoca-blue' : ''}>{n}</span></span>
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section title="Product usage (Zoca app, 90d)">
@@ -326,8 +402,17 @@ function DetailPanel({ c, movingTo, notes, onMovingChange, onNotesChange, onClos
         </div>
       </Section>
 
-      <Section title="Tickets">
-        <div className="text-xs">Open: <strong>{c.tickets_open_count}</strong>{c.tickets_high_priority_count ? <span className="text-red-600 font-bold"> · {c.tickets_high_priority_count} HIGH</span> : ''}</div>
+      <Section title="Tickets (full history)">
+        <div className="text-xs flex gap-3">
+          <span>Open: <strong className={c.tickets_open_count > 0 ? 'text-red-600' : 'text-slate-700'}>{c.tickets_open_count}</strong>{c.tickets_high_priority_count ? <span className="text-red-600 font-bold"> · {c.tickets_high_priority_count} HIGH</span> : ''}</span>
+          <span>Resolved (history): <strong className="text-slate-700">{c.tickets_resolved_history_count}</strong></span>
+          <span>Total ever: <strong className="text-slate-700">{c.tickets_total_history_count}</strong></span>
+        </div>
+        {c.tickets_total_history_count >= 5 && (
+          <div className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded mt-1">
+            ⚠ This account has had {c.tickets_total_history_count} total tickets — high-history accounts churn at 2-3× the rate.
+          </div>
+        )}
       </Section>
 
       <Section title="Other signals">

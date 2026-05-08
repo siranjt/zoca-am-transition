@@ -29,11 +29,11 @@ FROM (
 ) t WHERE rn = 1
 `;
 
+// Complete ticket history (no date filter — surfacing pattern context for AM transitions)
 export const SQL_OPEN_ISSUES = `
 SELECT entity_id, id, issue_summary, status, priority_type, channel, raised_at, am_notes
 FROM cx.open_issues
 WHERE entity_id = ANY(ARRAY[${W}]::uuid[])
-  AND raised_at > NOW() - INTERVAL '180 days'
 ORDER BY raised_at DESC
 `;
 
@@ -77,7 +77,11 @@ GROUP BY "locationEntityId", event
 `;
 
 export const SQL_LOCATION_INSIGHTS = `
-SELECT entity_id, review_target, with_zoca_6_month_profile_clicks, gbp_score, website_score, created_at
+-- predicted_6_month_leads is INTERNAL-only (used by AM Transition Toolkit as a marker).
+-- It must NOT be surfaced in customer-facing Performance Report.
+SELECT entity_id, review_target, with_zoca_6_month_profile_clicks,
+       predicted_6_month_leads, predicted_6_month_revenue,
+       gbp_score, website_score, created_at
 FROM (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY created_at DESC) AS rn
   FROM entities.location_insights
@@ -86,6 +90,33 @@ FROM (
     AND with_zoca_6_month_profile_clicks IS NOT NULL
     AND (monthly_predictions->>'nonIcpReason') IS NULL
 ) t WHERE rn = 1
+`;
+
+// AM history per account — every distinct AM that's been on the account, with first/last seen
+export const SQL_AM_HISTORY = `
+WITH all_assignments AS (
+  -- Current assignments
+  SELECT entity_id, am_entity_id, created_at AS assigned_at
+  FROM cx.am_mapping
+  WHERE entity_id = ANY(ARRAY[${W}]::uuid[])
+    AND am_entity_id IS NOT NULL
+  UNION ALL
+  -- Historical (logs) assignments
+  SELECT entity_id, am_entity_id, COALESCE(updated_at_timestamp, created_at) AS assigned_at
+  FROM cx.am_mapping_logs
+  WHERE entity_id = ANY(ARRAY[${W}]::uuid[])
+    AND am_entity_id IS NOT NULL
+)
+SELECT
+  a.entity_id,
+  a.am_entity_id,
+  TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.last_name, '')) AS am_name,
+  MIN(a.assigned_at) AS first_assigned,
+  MAX(a.assigned_at) AS last_assigned
+FROM all_assignments a
+LEFT JOIN entities.employees e ON e.entity_id = a.am_entity_id
+GROUP BY a.entity_id, a.am_entity_id, e.first_name, e.last_name
+ORDER BY a.entity_id, MIN(a.assigned_at)
 `;
 
 export const SQL_GBP_AUDIT = `

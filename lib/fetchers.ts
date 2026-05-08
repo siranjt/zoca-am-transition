@@ -7,7 +7,7 @@ import {
   SQL_HEALTH, SQL_OPEN_ISSUES, SQL_COMMS_SUMMARY, SQL_HANDOVER_BRIEF,
   SQL_MIXPANEL_USAGE, SQL_LOCATION_INSIGHTS, SQL_GBP_AUDIT,
   SQL_GBP_METRICS_TREND, SQL_RANKINGS, SQL_REVIEWS_12W,
-  SQL_GBP_LOCATIONS, SQL_PLACE_DETAILS, SQL_LEADS_YTD,
+  SQL_GBP_LOCATIONS, SQL_PLACE_DETAILS, SQL_LEADS_YTD, SQL_AM_HISTORY,
 } from './queries';
 
 const AURORA = 7;
@@ -26,3 +26,4 @@ export const fetchReviews12w = (eids: string[]) => dataset({ database: AURORA, q
 export const fetchGbpLocations = (eids: string[]) => dataset({ database: AURORA, query: bind(SQL_GBP_LOCATIONS, eids) });
 export const fetchPlaceDetails = (eids: string[]) => dataset({ database: AURORA, query: bind(SQL_PLACE_DETAILS, eids) });
 export const fetchLeadsYTD = (eids: string[]) => dataset({ database: POSTGRES, query: bind(SQL_LEADS_YTD, eids) });
+export const fetchAmHistory = (eids: string[]) => dataset({ database: AURORA, query: bind(SQL_AM_HISTORY, eids) });
