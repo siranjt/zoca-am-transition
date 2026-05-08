@@ -108,6 +108,22 @@ export default function Dashboard() {
     else { setSortKey(k); setSortDesc(['mrr', 'ytd_leads', 'leads_marked_90d', 'tickets_open_count', 'risks_count'].includes(k)); }
   }
 
+  // Projected capacity given current Moving To assignments
+  // IMPORTANT: this useMemo MUST be called before any early return — React rules of hooks.
+  const projected = useMemo(() => {
+    const map = new Map<string, number>();
+    const caps = data?.capacities ?? [];
+    for (const cap of caps) map.set(cap.am, cap.current);
+    const custs = data?.customers ?? [];
+    for (const c of custs) {
+      const mt = (state[c.entity_id]?.moving_to) || '';
+      if (!mt || mt === '— Keep —' || mt === c.am_name) continue;
+      map.set(c.am_name, (map.get(c.am_name) || 0) - 1);
+      map.set(mt, (map.get(mt) || 0) + 1);
+    }
+    return map;
+  }, [data, state]);
+
   if (loading) return <Loading />;
   if (error) return <ErrorView msg={error} />;
   if (!data) return <Loading />;
@@ -119,21 +135,6 @@ export default function Dashboard() {
   const tickets = rows.reduce((s, c) => s + c.tickets_open_count, 0);
   const moving = rows.filter((c) => getMovingTo(c.entity_id)).length;
   const selected = selectedEid ? data.customers.find((c) => c.entity_id === selectedEid) : null;
-
-  // Projected capacity given current Moving To assignments (browser localStorage)
-  const projected = useMemo(() => {
-    const map = new Map<string, number>();
-    const caps = data?.capacities ?? [];
-    for (const cap of caps) map.set(cap.am, cap.current);
-    const custs = data?.customers ?? [];
-    for (const c of custs) {
-      const mt = getMovingTo(c.entity_id);
-      if (!mt || mt === '— Keep —' || mt === c.am_name) continue;
-      map.set(c.am_name, (map.get(c.am_name) || 0) - 1);
-      map.set(mt, (map.get(mt) || 0) + 1);
-    }
-    return map;
-  }, [data, state]);
 
   return (
     <div className="min-h-screen">
