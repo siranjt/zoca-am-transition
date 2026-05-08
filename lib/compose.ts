@@ -10,6 +10,7 @@ import {
   fetchGbpLocations, fetchPlaceDetails, fetchLeadsYTD, fetchAmHistory,
 } from './fetchers';
 import { fetchBillingData, type BillingForCustomer } from './chargebeeFetch';
+import { listTransitions, type TransitionRow } from './db';
 import { podForAm, ALL_DROPDOWN_AMS } from './pods';
 import type { CustomerRow, EngagementTier, Health } from './types';
 
@@ -76,11 +77,11 @@ export async function composeDataset(): Promise<ComposedDataset> {
   const eids = base.map((c) => c.entity_id);
   if (eids.length === 0) return { generated_at: new Date().toISOString(), customers: [], ams: [], capacities: [], capacity_max: AM_CAPACITY_MAX };
 
-  // Step 2: parallel Metabase + Chargebee pulls (Chargebee is cached for 10 min)
+  // Step 2: parallel Metabase + Chargebee + Postgres pulls (Chargebee cached 10min, Postgres direct)
   const [
     health, issues, commsSummary, handover, mixpanel,
     insights, audits, metrics, rankings, reviews,
-    locs, pds, leads, billing, amHistory,
+    locs, pds, leads, billing, amHistory, transitions,
   ] = await Promise.all([
     fetchHealth(eids).catch(() => []),
     fetchOpenIssues(eids).catch(() => []),
@@ -97,7 +98,11 @@ export async function composeDataset(): Promise<ComposedDataset> {
     fetchLeadsYTD(eids).catch(() => []),
     fetchBillingData().catch((e) => { console.error('[chargebee]', e); return {} as Record<string, BillingForCustomer>; }),
     fetchAmHistory(eids).catch(() => []),
+    listTransitions().catch((e) => { console.error('[postgres transitions]', e); return [] as TransitionRow[]; }),
   ]);
+
+  const idxTransitions = new Map<string, TransitionRow>();
+  for (const t of transitions) idxTransitions.set(String(t.entity_id), t);
 
   // Index helpers
   function indexBy<T extends { entity_id?: string }>(rows: T[]): Map<string, T> {
@@ -283,6 +288,13 @@ export async function composeDataset(): Promise<ComposedDataset> {
       oldest_unpaid_due_date: bill?.oldest_unpaid_due_date ?? null,
       cancel_scheduled_at: bill?.cancel_scheduled_at ?? null,
       subscription_status: bill?.subscription_status ?? null,
+
+      // Phase 2: shared transition state
+      moving_to: idxTransitions.get(eid)?.moving_to ?? null,
+      handoff_status: idxTransitions.get(eid)?.handoff_status ?? 'Not Started',
+      transition_notes: idxTransitions.get(eid)?.transition_notes ?? null,
+      transition_updated_at: idxTransitions.get(eid)?.updated_at ?? null,
+      transition_updated_by: idxTransitions.get(eid)?.updated_by ?? null,
     };
   });
 

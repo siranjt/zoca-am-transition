@@ -73,4 +73,11 @@ export interface CustomerRow {
   oldest_unpaid_due_date: string | null;
   cancel_scheduled_at: string | null;
   subscription_status: string | null;
+
+  // Phase 2: shared transition state from Vercel Postgres
+  moving_to: string | null;
+  handoff_status: string;
+  transition_notes: string | null;
+  transition_updated_at: string | null;
+  transition_updated_by: string | null;
 }

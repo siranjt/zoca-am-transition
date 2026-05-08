@@ -13,7 +13,13 @@ interface DashboardData {
   capacity_max: number;
 }
 
-const STORAGE_KEY = 'zoca_am_transition_app_v1';
+const USER_KEY = 'zoca_am_transition_user_v1';
+
+interface PendingChange {
+  moving_to?: string | null;
+  handoff_status?: string;
+  transition_notes?: string | null;
+}
 
 const HEALTH_COLORS: Record<string, string> = {
   'At Risk': 'bg-accent-red-bg text-accent-red',
@@ -44,26 +50,108 @@ export default function Dashboard() {
   const [sortKey, setSortKey] = useState<string>('mrr');
   const [sortDesc, setSortDesc] = useState(true);
   const [selectedEid, setSelectedEid] = useState<string | null>(null);
-  const [state, setState] = useState<Record<string, { moving_to?: string; notes?: string }>>({});
+  // Optimistic overlay — pending changes that haven't been confirmed by the server yet.
+  const [pending, setPending] = useState<Record<string, PendingChange>>({});
+  // Display name — prompted on first visit, stored in browser, sent with every change.
+  const [user, setUser] = useState<string>('');
+  const [userPromptOpen, setUserPromptOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    try { setState(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch { /* noop */ }
+    try {
+      const u = localStorage.getItem(USER_KEY) || '';
+      if (!u) setUserPromptOpen(true);
+      else setUser(u);
+    } catch { setUserPromptOpen(true); }
   }, []);
 
-  useEffect(() => {
-    fetch('/api/customers')
-      .then((r) => r.json())
-      .then((d) => { if (d.error) setError(d.error); else setData(d); })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  function saveState(next: typeof state) {
-    setState(next);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* noop */ }
+  async function loadCustomers() {
+    setRefreshing(true);
+    try {
+      const r = await fetch('/api/customers');
+      const d = await r.json();
+      if (d.error) setError(d.error); else { setData(d); setError(null); }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
-  function getMovingTo(eid: string) { return state[eid]?.moving_to ?? ''; }
-  function getNotes(eid: string) { return state[eid]?.notes ?? ''; }
+
+  useEffect(() => { loadCustomers(); }, []);
+  // Auto-poll every 60s so AMs see each others' changes without manually refreshing
+  useEffect(() => {
+    const id = setInterval(() => { if (!refreshing) loadCustomers(); }, 60_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshing]);
+
+  function saveUser(name: string) {
+    const trimmed = name.trim().slice(0, 80);
+    if (!trimmed) return;
+    setUser(trimmed);
+    setUserPromptOpen(false);
+    try { localStorage.setItem(USER_KEY, trimmed); } catch { /* noop */ }
+  }
+
+  function getCustomer(eid: string) {
+    return data?.customers.find((c) => c.entity_id === eid);
+  }
+
+  function getMovingTo(eid: string) {
+    if (eid in pending && 'moving_to' in pending[eid]) return pending[eid].moving_to ?? '';
+    return getCustomer(eid)?.moving_to ?? '';
+  }
+  function getHandoffStatus(eid: string) {
+    if (eid in pending && pending[eid].handoff_status) return pending[eid].handoff_status!;
+    return getCustomer(eid)?.handoff_status ?? 'Not Started';
+  }
+  function getNotes(eid: string) {
+    if (eid in pending && 'transition_notes' in pending[eid]) return pending[eid].transition_notes ?? '';
+    return getCustomer(eid)?.transition_notes ?? '';
+  }
+
+  // Send a transition update to the server (optimistic — caller is expected to update pending first)
+  async function syncTransition(eid: string, change: PendingChange) {
+    if (!user) { setUserPromptOpen(true); return; }
+    try {
+      const res = await fetch('/api/transitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_id: eid, ...change, actor: user }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // After a successful save, refresh customers so the row picks up the new transition fields server-side.
+      // Clear pending for this entity once the customer data round-trips.
+      await loadCustomers();
+      setPending((prev) => {
+        const next = { ...prev };
+        delete next[eid];
+        return next;
+      });
+    } catch (err) {
+      console.error('[syncTransition]', err);
+      // Keep pending so user sees their unsaved change; flash error somewhere
+      setError(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  function setMovingTo(eid: string, val: string) {
+    setPending((prev) => ({ ...prev, [eid]: { ...prev[eid], moving_to: val || null } }));
+    syncTransition(eid, { moving_to: val || null });
+  }
+  function setHandoffStatus(eid: string, val: string) {
+    setPending((prev) => ({ ...prev, [eid]: { ...prev[eid], handoff_status: val } }));
+    syncTransition(eid, { handoff_status: val });
+  }
+  // Notes: debounce the sync so we don't fire a request on every keystroke
+  const notesTimers = useMemo<Record<string, ReturnType<typeof setTimeout>>>(() => ({}), []);
+  function setNotes(eid: string, val: string) {
+    setPending((prev) => ({ ...prev, [eid]: { ...prev[eid], transition_notes: val || null } }));
+    if (notesTimers[eid]) clearTimeout(notesTimers[eid]);
+    notesTimers[eid] = setTimeout(() => { syncTransition(eid, { transition_notes: val || null }); }, 800);
+  }
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -91,7 +179,7 @@ export default function Dashboard() {
       return sortDesc ? String(bx).localeCompare(String(ax)) : String(ax).localeCompare(String(bx));
     });
     return out;
-  }, [data, filters, state, sortKey, sortDesc]);
+  }, [data, filters, pending, sortKey, sortDesc]);
 
   function sortVal(c: CustomerRow, k: string): number | string {
     switch (k) {
@@ -108,7 +196,7 @@ export default function Dashboard() {
     else { setSortKey(k); setSortDesc(['mrr', 'ytd_leads', 'leads_marked_90d', 'tickets_open_count', 'risks_count'].includes(k)); }
   }
 
-  // Projected capacity given current Moving To assignments
+  // Projected capacity given current Moving To assignments (DB + pending overlay)
   // IMPORTANT: this useMemo MUST be called before any early return — React rules of hooks.
   const projected = useMemo(() => {
     const map = new Map<string, number>();
@@ -116,13 +204,15 @@ export default function Dashboard() {
     for (const cap of caps) map.set(cap.am, cap.current);
     const custs = data?.customers ?? [];
     for (const c of custs) {
-      const mt = (state[c.entity_id]?.moving_to) || '';
+      let mt: string;
+      if (c.entity_id in pending && 'moving_to' in pending[c.entity_id]) mt = pending[c.entity_id].moving_to ?? '';
+      else mt = c.moving_to ?? '';
       if (!mt || mt === '— Keep —' || mt === c.am_name) continue;
       map.set(c.am_name, (map.get(c.am_name) || 0) - 1);
       map.set(mt, (map.get(mt) || 0) + 1);
     }
     return map;
-  }, [data, state]);
+  }, [data, pending]);
 
   if (loading) return <Loading />;
   if (error) return <ErrorView msg={error} />;
@@ -138,6 +228,10 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
+      {userPromptOpen && (
+        <UserPrompt onSave={saveUser} initial={user} />
+      )}
+
       <header className="px-4 sm:px-8 py-5 sm:py-7 border-b border-line bg-canvas/60 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -149,6 +243,16 @@ export default function Dashboard() {
               <span>Live · {data.customers.length} active customers · {data.ams.length} AMs · 5 pods</span>
               <span className="text-ink-dim/60">· Generated {new Date(data.generated_at).toLocaleString()}</span>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {user && (
+              <button onClick={() => setUserPromptOpen(true)} title="Click to change name" className="text-xs px-3 py-1.5 rounded-full border border-line bg-canvas hover:border-accent-pink hover:bg-accent-pink-bg/40 transition">
+                <span className="text-ink-dim">Signed in as </span><span className="font-semibold text-ink">{user}</span>
+              </button>
+            )}
+            <button onClick={loadCustomers} disabled={refreshing} className="text-xs px-3 py-1.5 rounded-full border border-line bg-canvas hover:border-accent-pink hover:bg-accent-pink-bg/40 transition disabled:opacity-50">
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
           </div>
         </div>
       </header>
@@ -264,11 +368,13 @@ export default function Dashboard() {
             <DetailPanel
               c={selected}
               movingTo={getMovingTo(selected.entity_id)}
+              handoffStatus={getHandoffStatus(selected.entity_id)}
               notes={getNotes(selected.entity_id)}
               projected={projected}
               capacityMax={data.capacity_max ?? 130}
-              onMovingChange={(v) => saveState({ ...state, [selected.entity_id]: { ...state[selected.entity_id], moving_to: v } })}
-              onNotesChange={(v) => saveState({ ...state, [selected.entity_id]: { ...state[selected.entity_id], notes: v } })}
+              onMovingChange={(v) => setMovingTo(selected.entity_id, v)}
+              onHandoffStatusChange={(v) => setHandoffStatus(selected.entity_id, v)}
+              onNotesChange={(v) => setNotes(selected.entity_id, v)}
               onClose={() => setSelectedEid(null)}
             />
           )}
@@ -321,10 +427,13 @@ function SelectKv({ label, value, onChange, options }: { label: string; value: s
   );
 }
 
-function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChange, onNotesChange, onClose }: {
-  c: CustomerRow; movingTo: string; notes: string;
+function DetailPanel({ c, movingTo, handoffStatus, notes, projected, capacityMax, onMovingChange, onHandoffStatusChange, onNotesChange, onClose }: {
+  c: CustomerRow; movingTo: string; handoffStatus: string; notes: string;
   projected: Map<string, number>; capacityMax: number;
-  onMovingChange: (v: string) => void; onNotesChange: (v: string) => void; onClose: () => void;
+  onMovingChange: (v: string) => void;
+  onHandoffStatusChange: (v: string) => void;
+  onNotesChange: (v: string) => void;
+  onClose: () => void;
 }) {
   const targetLoad = movingTo && movingTo !== '— Keep —' ? projected.get(movingTo) ?? 0 : null;
   const targetWillExceed = targetLoad != null && targetLoad > capacityMax;
@@ -342,11 +451,17 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
       <div className="text-3xl font-extrabold text-pink-gradient mb-1 tabular-nums leading-none">${Math.round(c.mrr).toLocaleString()}<span className="text-sm font-semibold text-ink-dim">/mo</span></div>
 
       <Section title="Handoff assignment">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold text-ink-muted">Move to →</span>
           <select value={movingTo} onChange={(e) => onMovingChange(e.target.value)} className="border border-line bg-canvas rounded-md px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20">
             <option value="">— not assigned —</option>
             {ALL_DROPDOWN_AMS.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className="text-xs font-semibold text-ink-muted">Status</span>
+          <select value={handoffStatus} onChange={(e) => onHandoffStatusChange(e.target.value)} className="border border-line bg-canvas rounded-md px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20">
+            {['Not Started','Brief Sent','Intro Call','In Progress','Done','Skip'].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         {targetLoad != null && (
@@ -354,6 +469,11 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
             {targetWillExceed && '⚠ '}
             {movingTo}&apos;s projected load: {targetLoad} / {capacityMax}
             {targetWillExceed && ` — exceeds capacity by ${targetLoad - capacityMax}`}
+          </div>
+        )}
+        {c.transition_updated_by && (
+          <div className="text-[11px] text-ink-dim mt-2 italic">
+            Last updated by <span className="font-semibold text-ink-muted">{c.transition_updated_by}</span>{c.transition_updated_at ? ` · ${formatRelative(c.transition_updated_at)}` : ''}
           </div>
         )}
       </Section>
@@ -439,8 +559,9 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
         </div>
       </Section>
 
-      <Section title="Notes (saved locally)">
-        <textarea className="w-full min-h-[80px] p-2.5 border border-line bg-canvas rounded-lg text-xs text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20" value={notes} onChange={(e) => onNotesChange(e.target.value)} placeholder="Add transition notes..." />
+      <Section title="Notes (shared)">
+        <textarea className="w-full min-h-[80px] p-2.5 border border-line bg-canvas rounded-lg text-xs text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20" value={notes} onChange={(e) => onNotesChange(e.target.value)} placeholder="Add transition notes (saves automatically)..." />
+        <div className="text-[10px] text-ink-dim mt-1 italic">Saved to shared database — visible to all AMs.</div>
       </Section>
     </div>
   );
@@ -473,6 +594,51 @@ function Loading() {
       </div>
     </div>
   );
+}
+
+function UserPrompt({ onSave, initial }: { onSave: (name: string) => void; initial: string }) {
+  const [name, setName] = useState(initial || '');
+  return (
+    <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-canvas rounded-2xl border border-line shadow-xl p-6 max-w-md w-full">
+        <h2 className="text-xl font-extrabold text-ink mb-1">Welcome 👋</h2>
+        <p className="text-sm text-ink-muted mb-4">What's your name? We'll show it on the audit log when you make handoff changes.</p>
+        <input
+          autoFocus
+          type="text"
+          placeholder="e.g. Sudha"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') onSave(name); }}
+          className="w-full border border-line bg-canvas rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20"
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            onClick={() => onSave(name)}
+            disabled={!name.trim()}
+            className="px-4 py-2 rounded-lg bg-accent-pink text-white text-sm font-semibold hover:bg-accent-pink-strong transition disabled:opacity-50"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatRelative(iso: string): string {
+  try {
+    const dt = new Date(iso);
+    const diff = Date.now() - dt.valueOf();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min} min ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day}d ago`;
+    return dt.toLocaleDateString();
+  } catch { return iso; }
 }
 
 function ErrorView({ msg }: { msg: string }) {
