@@ -10,7 +10,7 @@ import {
   fetchGbpLocations, fetchPlaceDetails, fetchLeadsYTD, fetchAmHistory,
 } from './fetchers';
 import { fetchBillingData, type BillingForCustomer } from './chargebeeFetch';
-import { podForAm } from './pods';
+import { podForAm, ALL_DROPDOWN_AMS } from './pods';
 import type { CustomerRow, EngagementTier, Health } from './types';
 
 function asString(v: unknown): string | null {
@@ -293,8 +293,7 @@ export async function composeDataset(): Promise<ComposedDataset> {
   for (const c of customers) {
     capCounts.set(c.am_name, (capCounts.get(c.am_name) || 0) + 1);
   }
-  // Ensure incoming AMs are listed too
-  const { ALL_DROPDOWN_AMS } = await import('./pods');
+  // Ensure incoming AMs are listed too (Taanya etc.)
   for (const a of ALL_DROPDOWN_AMS) if (!capCounts.has(a)) capCounts.set(a, 0);
   const capacities: AmCapacity[] = Array.from(capCounts.entries())
     .map(([am, current]) => ({

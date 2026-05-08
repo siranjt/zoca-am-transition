@@ -42,10 +42,18 @@ export async function listAll<T>(
     const qs = new URLSearchParams({ ...params, limit: '100' });
     if (offset) qs.set('offset', offset);
     const url = `${BASE}${path}?${qs.toString()}`;
-    const res = await fetch(url, {
-      headers: { Authorization: authHeader(), Accept: 'application/json' },
-      cache: 'no-store',
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { Authorization: authHeader(), Accept: 'application/json' },
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Chargebee ${res.status} ${path}: ${text.slice(0, 300)}`);

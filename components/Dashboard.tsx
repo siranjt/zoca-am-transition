@@ -123,11 +123,12 @@ export default function Dashboard() {
   // Projected capacity given current Moving To assignments (browser localStorage)
   const projected = useMemo(() => {
     const map = new Map<string, number>();
-    for (const cap of data.capacities) map.set(cap.am, cap.current);
-    for (const c of data.customers) {
+    const caps = data?.capacities ?? [];
+    for (const cap of caps) map.set(cap.am, cap.current);
+    const custs = data?.customers ?? [];
+    for (const c of custs) {
       const mt = getMovingTo(c.entity_id);
       if (!mt || mt === '— Keep —' || mt === c.am_name) continue;
-      // remove from old AM, add to new
       map.set(c.am_name, (map.get(c.am_name) || 0) - 1);
       map.set(mt, (map.get(mt) || 0) + 1);
     }
@@ -154,19 +155,20 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-3 mb-3">
-          <div className="text-[10px] uppercase tracking-wide font-bold text-zoca-blue mb-2">AM Capacity (max {data.capacity_max} per AM)</div>
+          <div className="text-[10px] uppercase tracking-wide font-bold text-zoca-blue mb-2">AM Capacity (max {data.capacity_max ?? 130} per AM)</div>
           <div className="flex flex-wrap gap-2">
-            {data.capacities.map((cap) => {
+            {(data.capacities ?? []).map((cap) => {
+              const max = data.capacity_max ?? 130;
               const proj = projected.get(cap.am) ?? cap.current;
-              const projPct = Math.round((proj / data.capacity_max) * 100);
-              const projOver = proj >= data.capacity_max;
+              const projPct = Math.round((proj / max) * 100);
+              const projOver = proj >= max;
               const changed = proj !== cap.current;
               return (
                 <div key={cap.am} className={`min-w-[150px] flex-1 bg-slate-50 rounded p-2 border ${projOver ? 'border-red-400' : 'border-slate-200'}`}>
                   <div className="text-[11px] font-semibold text-slate-700 truncate">{cap.am}</div>
                   <div className="flex items-baseline gap-1">
                     <span className={`text-base font-bold ${projOver ? 'text-red-600' : projPct >= 90 ? 'text-amber-600' : 'text-zoca-blue'}`}>{proj}</span>
-                    <span className="text-[10px] text-slate-500">/ {data.capacity_max}</span>
+                    <span className="text-[10px] text-slate-500">/ {max}</span>
                     {changed && <span className="text-[10px] text-orange-700 ml-1">({proj > cap.current ? '+' : ''}{proj - cap.current})</span>}
                   </div>
                   <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
@@ -255,7 +257,7 @@ export default function Dashboard() {
               movingTo={getMovingTo(selected.entity_id)}
               notes={getNotes(selected.entity_id)}
               projected={projected}
-              capacityMax={data.capacity_max}
+              capacityMax={data.capacity_max ?? 130}
               onMovingChange={(v) => saveState({ ...state, [selected.entity_id]: { ...state[selected.entity_id], moving_to: v } })}
               onNotesChange={(v) => saveState({ ...state, [selected.entity_id]: { ...state[selected.entity_id], notes: v } })}
               onClose={() => setSelectedEid(null)}
@@ -379,12 +381,12 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
 
       <Section title="AM history">
         <div className="text-xs">
-          <strong>{c.am_history_count}</strong> distinct AM{c.am_history_count === 1 ? '' : 's'} ever assigned
-          {c.am_history_count >= 3 && <span className="text-red-600 font-bold ml-1">⚠ AM churn</span>}
+          <strong>{c.am_history_count ?? 0}</strong> distinct AM{(c.am_history_count ?? 0) === 1 ? '' : 's'} ever assigned
+          {(c.am_history_count ?? 0) >= 3 && <span className="text-red-600 font-bold ml-1">⚠ AM churn</span>}
         </div>
-        {c.am_history_names.length > 0 && (
+        {(c.am_history_names?.length ?? 0) > 0 && (
           <div className="text-xs text-slate-700 mt-1">
-            {c.am_history_names.map((n, i) => (
+            {(c.am_history_names ?? []).map((n, i) => (
               <span key={i}>{i > 0 && <span className="text-slate-400"> → </span>}<span className={n === c.am_name ? 'font-semibold text-zoca-blue' : ''}>{n}</span></span>
             ))}
           </div>
@@ -405,10 +407,10 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
       <Section title="Tickets (full history)">
         <div className="text-xs flex gap-3">
           <span>Open: <strong className={c.tickets_open_count > 0 ? 'text-red-600' : 'text-slate-700'}>{c.tickets_open_count}</strong>{c.tickets_high_priority_count ? <span className="text-red-600 font-bold"> · {c.tickets_high_priority_count} HIGH</span> : ''}</span>
-          <span>Resolved (history): <strong className="text-slate-700">{c.tickets_resolved_history_count}</strong></span>
-          <span>Total ever: <strong className="text-slate-700">{c.tickets_total_history_count}</strong></span>
+          <span>Resolved (history): <strong className="text-slate-700">{c.tickets_resolved_history_count ?? 0}</strong></span>
+          <span>Total ever: <strong className="text-slate-700">{c.tickets_total_history_count ?? 0}</strong></span>
         </div>
-        {c.tickets_total_history_count >= 5 && (
+        {(c.tickets_total_history_count ?? 0) >= 5 && (
           <div className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded mt-1">
             ⚠ This account has had {c.tickets_total_history_count} total tickets — high-history accounts churn at 2-3× the rate.
           </div>
