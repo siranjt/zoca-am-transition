@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+.env
+.env.local
+.env*.local
+.DS_Store
+*.log
+.vercel
+.cache
+*.pem
+coverage
+next-env.d.ts
