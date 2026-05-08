@@ -55,4 +55,14 @@ export interface CustomerRow {
   // Flags
   has_handover_brief: boolean;
   has_audit: boolean;
+
+  // Chargebee billing (live)
+  auto_collection: 'on' | 'off' | null;
+  payment_method_type: string | null;
+  payment_method_status: string | null;
+  unpaid_invoice_count: number;
+  unpaid_total_cents: number;
+  oldest_unpaid_due_date: string | null;
+  cancel_scheduled_at: string | null;
+  subscription_status: string | null;
 }

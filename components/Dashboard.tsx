@@ -33,7 +33,7 @@ export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ pod: '', am: '', health: '', engagement: '', moving: '', q: '' });
+  const [filters, setFilters] = useState({ pod: '', am: '', health: '', engagement: '', moving: '', autopay: '', billing: '', q: '' });
   const [sortKey, setSortKey] = useState<string>('mrr');
   const [sortDesc, setSortDesc] = useState(true);
   const [selectedEid, setSelectedEid] = useState<string | null>(null);
@@ -68,6 +68,9 @@ export default function Dashboard() {
       const mt = getMovingTo(c.entity_id);
       if (filters.moving === '__set__' && !mt) return false;
       if (filters.moving === '__none__' && mt) return false;
+      if (filters.autopay && c.auto_collection !== filters.autopay) return false;
+      if (filters.billing === 'unpaid' && c.unpaid_invoice_count === 0) return false;
+      if (filters.billing === 'cancel_scheduled' && !c.cancel_scheduled_at) return false;
       if (filters.q) {
         const hay = [c.bizname, c.customer_id, c.locality, c.state, c.entity_id].join(' ').toLowerCase();
         if (!hay.includes(filters.q.toLowerCase())) return false;
@@ -136,11 +139,15 @@ export default function Dashboard() {
           <Select label="Engagement" value={filters.engagement} onChange={(v) => setFilters({ ...filters, engagement: v })} options={['', 'Active', 'Light', 'Cold', 'Dormant']} />
           <SelectKv label="Moving To" value={filters.moving} onChange={(v) => setFilters({ ...filters, moving: v })}
             options={[['', 'All'], ['__set__', 'Has assignment'], ['__none__', 'Unassigned']]} />
+          <SelectKv label="Auto-pay" value={filters.autopay} onChange={(v) => setFilters({ ...filters, autopay: v })}
+            options={[['', 'All'], ['on', 'On'], ['off', 'Off']]} />
+          <SelectKv label="Billing" value={filters.billing} onChange={(v) => setFilters({ ...filters, billing: v })}
+            options={[['', 'All'], ['unpaid', 'Has unpaid'], ['cancel_scheduled', 'Cancel scheduled']]} />
           <input type="text" placeholder="search bizname / id / locality" value={filters.q}
             onChange={(e) => setFilters({ ...filters, q: e.target.value })}
             className="border border-slate-300 rounded px-2 py-1 text-sm min-w-[220px]" />
           <button className="bg-white border border-zoca-blue text-zoca-blue px-3 py-1 rounded font-semibold"
-            onClick={() => setFilters({ pod: '', am: '', health: '', engagement: '', moving: '', q: '' })}>Reset</button>
+            onClick={() => setFilters({ pod: '', am: '', health: '', engagement: '', moving: '', autopay: '', billing: '', q: '' })}>Reset</button>
         </div>
 
         <div className={`grid gap-3 ${selectedEid ? 'grid-cols-[1fr_460px]' : 'grid-cols-1'}`}>
@@ -151,8 +158,9 @@ export default function Dashboard() {
                   <tr className="bg-zoca-blue text-white text-[11px] uppercase tracking-wide">
                     {[
                       ['pod', 'Pod'], ['am_name', 'Current AM'], ['moving_to', 'Moving To'], ['bizname', 'Business'],
-                      ['health', 'Health'], ['engagement', 'App'], ['mrr', 'MRR'], ['ytd_leads', 'YTD Leads'],
-                      ['leads_marked_90d', 'Marked 90d'], ['last_app_open', 'Last App Open'], ['tickets_open_count', 'Tix'], ['risks_count', 'Risks'],
+                      ['health', 'Health'], ['engagement', 'App'], ['auto_collection', 'Auto-Pay'], ['mrr', 'MRR'],
+                      ['unpaid_invoice_count', 'Unpaid'], ['ytd_leads', 'YTD Leads'],
+                      ['leads_marked_90d', 'Marked 90d'], ['tickets_open_count', 'Tix'], ['risks_count', 'Risks'],
                     ].map(([k, lbl]) => (
                       <th key={k as string} onClick={() => setSort(k as string)} className="px-2 py-2 text-left cursor-pointer hover:bg-zoca-blueDeep font-semibold">{lbl}</th>
                     ))}
@@ -160,7 +168,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {rows.length === 0 ? (
-                    <tr><td colSpan={12} className="py-12 text-center text-slate-500">No customers match the current filters.</td></tr>
+                    <tr><td colSpan={13} className="py-12 text-center text-slate-500">No customers match the current filters.</td></tr>
                   ) : rows.map((c) => {
                     const mt = getMovingTo(c.entity_id);
                     return (
@@ -172,10 +180,19 @@ export default function Dashboard() {
                         <td className="px-2 py-2"><div className="font-semibold text-zoca-blue">{c.bizname || '—'}</div><div className="text-xs text-slate-500">{[c.locality, c.state].filter(Boolean).join(', ')}</div></td>
                         <td className="px-2 py-2"><Chip className={HEALTH_COLORS[c.health]}>{c.health}</Chip></td>
                         <td className="px-2 py-2"><Chip className={ENG_COLORS[c.engagement_tier]}>{c.engagement_tier}</Chip></td>
+                        <td className="px-2 py-2">
+                          {c.auto_collection === 'on' && <Chip className="bg-green-100 text-green-700">ON</Chip>}
+                          {c.auto_collection === 'off' && <Chip className="bg-red-100 text-red-700">OFF</Chip>}
+                          {c.auto_collection == null && <span className="text-slate-400 text-xs">—</span>}
+                        </td>
                         <td className="px-2 py-2 text-right font-mono text-sm">${Math.round(c.mrr).toLocaleString()}</td>
+                        <td className="px-2 py-2 text-right text-sm">
+                          {c.unpaid_invoice_count > 0
+                            ? <span className="text-red-600 font-semibold">{c.unpaid_invoice_count} (${Math.round(c.unpaid_total_cents / 100).toLocaleString()})</span>
+                            : <span className="text-slate-400">—</span>}
+                        </td>
                         <td className="px-2 py-2 text-right text-sm">{c.ytd_leads}</td>
                         <td className="px-2 py-2 text-right text-sm">{c.leads_marked_90d}</td>
-                        <td className="px-2 py-2 text-sm">{c.last_app_open ? new Date(c.last_app_open).toLocaleDateString() : <span className="text-slate-400">never</span>}</td>
                         <td className="px-2 py-2 text-right text-sm">{c.tickets_open_count}{c.tickets_high_priority_count ? <span className="text-red-600 font-bold"> ({c.tickets_high_priority_count}H)</span> : ''}</td>
                         <td className="px-2 py-2 text-sm">{c.risks.length || <span className="text-slate-400">none</span>}</td>
                       </tr>
@@ -269,6 +286,22 @@ function DetailPanel({ c, movingTo, notes, onMovingChange, onNotesChange, onClos
       <Section title="Risks & signals">
         {c.risks.length === 0 ? <div className="text-xs text-slate-400">No active risk signals.</div>
           : c.risks.map((r, i) => <div key={i} className="bg-red-100 text-red-700 px-2 py-1 rounded mb-1 text-xs font-medium">{r}</div>)}
+      </Section>
+
+      <Section title="Billing (Chargebee)">
+        <div className="grid grid-cols-2 gap-2">
+          <Cell label="Auto-debit" value={c.auto_collection ? c.auto_collection.toUpperCase() : '—'} red={c.auto_collection === 'off'} />
+          <Cell label="Subscription" value={c.subscription_status || '—'} />
+          <Cell label="Payment method" value={c.payment_method_type || '—'} />
+          <Cell label="PM status" value={c.payment_method_status || '—'} red={c.payment_method_status === 'invalid'} />
+          <Cell label="Unpaid invoices" value={c.unpaid_invoice_count > 0 ? `${c.unpaid_invoice_count} ($${Math.round(c.unpaid_total_cents / 100).toLocaleString()})` : '—'} red={c.unpaid_invoice_count > 0} />
+          <Cell label="Cancel scheduled" value={c.cancel_scheduled_at ? new Date(c.cancel_scheduled_at).toLocaleDateString() : '—'} red={!!c.cancel_scheduled_at} />
+        </div>
+        {c.oldest_unpaid_due_date && (
+          <div className="mt-2 text-xs text-red-700 bg-red-50 px-2 py-1 rounded">
+            Oldest unpaid invoice due: {new Date(c.oldest_unpaid_due_date).toLocaleDateString()}
+          </div>
+        )}
       </Section>
 
       <Section title="Performance">

@@ -9,6 +9,7 @@ import {
   fetchGbpMetricsTrend, fetchRankings, fetchReviews12w,
   fetchGbpLocations, fetchPlaceDetails, fetchLeadsYTD,
 } from './fetchers';
+import { fetchBillingData, type BillingForCustomer } from './chargebeeFetch';
 import { podForAm } from './pods';
 import type { CustomerRow, EngagementTier, Health } from './types';
 
@@ -63,11 +64,11 @@ export async function composeDataset(): Promise<ComposedDataset> {
   const eids = base.map((c) => c.entity_id);
   if (eids.length === 0) return { generated_at: new Date().toISOString(), customers: [], ams: [] };
 
-  // Step 2: parallel Metabase pulls (skip Mixpanel + leads if too slow on cold cache)
+  // Step 2: parallel Metabase + Chargebee pulls (Chargebee is cached for 10 min)
   const [
     health, issues, commsSummary, handover, mixpanel,
     insights, audits, metrics, rankings, reviews,
-    locs, pds, leads,
+    locs, pds, leads, billing,
   ] = await Promise.all([
     fetchHealth(eids).catch(() => []),
     fetchOpenIssues(eids).catch(() => []),
@@ -82,6 +83,7 @@ export async function composeDataset(): Promise<ComposedDataset> {
     fetchGbpLocations(eids).catch(() => []),
     fetchPlaceDetails(eids).catch(() => []),
     fetchLeadsYTD(eids).catch(() => []),
+    fetchBillingData().catch((e) => { console.error('[chargebee]', e); return {} as Record<string, BillingForCustomer>; }),
   ]);
 
   // Index helpers
@@ -182,6 +184,9 @@ export async function composeDataset(): Promise<ComposedDataset> {
     // for MVP, use BaseSheet last_comms_date and skip channel breakdown.)
     const lastTouch = b.last_comms_date || null;
 
+    // Chargebee billing for this customer
+    const bill = billing[b.customer_id] as BillingForCustomer | undefined;
+
     // Risks
     const risks: string[] = [];
     if (h && tierFromCx(h.health_tier) === 'At Risk') risks.push(`CX health: ${h.health_tier} (${Math.round(Number(h.composite_health_score || 0))})`);
@@ -189,6 +194,9 @@ export async function composeDataset(): Promise<ComposedDataset> {
     if (high.length) risks.push(`${high.length} HIGH priority ticket(s)`);
     if (engTier === 'Dormant') risks.push('Dormant — no Zoca app activity in 90 days');
     if (dipPct != null && dipPct >= 30) risks.push(`GBP clicks down ${dipPct.toFixed(0)}% from peak`);
+    if (bill?.auto_collection === 'off') risks.push('Auto-debit OFF (manual pay)');
+    if (bill && bill.unpaid_invoice_count > 0) risks.push(`${bill.unpaid_invoice_count} unpaid invoice(s) · $${(bill.unpaid_total_cents / 100).toFixed(0)}`);
+    if (bill?.cancel_scheduled_at) risks.push('Cancellation scheduled');
 
     return {
       entity_id: eid,
@@ -236,6 +244,16 @@ export async function composeDataset(): Promise<ComposedDataset> {
 
       has_handover_brief: !!idxHand.get(eid),
       has_audit: !!idxAudit.get(eid),
+
+      // Chargebee
+      auto_collection: bill?.auto_collection ?? null,
+      payment_method_type: bill?.payment_method_type ?? null,
+      payment_method_status: bill?.payment_method_status ?? null,
+      unpaid_invoice_count: bill?.unpaid_invoice_count ?? 0,
+      unpaid_total_cents: bill?.unpaid_total_cents ?? 0,
+      oldest_unpaid_due_date: bill?.oldest_unpaid_due_date ?? null,
+      cancel_scheduled_at: bill?.cancel_scheduled_at ?? null,
+      subscription_status: bill?.subscription_status ?? null,
     };
   });
 
