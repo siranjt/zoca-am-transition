@@ -16,24 +16,24 @@ interface DashboardData {
 const STORAGE_KEY = 'zoca_am_transition_app_v1';
 
 const HEALTH_COLORS: Record<string, string> = {
-  'At Risk': 'bg-red-100 text-red-700',
-  'Watch': 'bg-amber-100 text-amber-700',
-  'Healthy': 'bg-green-100 text-green-700',
-  'Unknown': 'bg-slate-100 text-slate-500',
+  'At Risk': 'bg-accent-red-bg text-accent-red',
+  'Watch': 'bg-accent-yellow-bg text-accent-yellow',
+  'Healthy': 'bg-accent-green-bg text-accent-green',
+  'Unknown': 'bg-line-soft text-ink-dim',
 };
 const ENG_COLORS: Record<string, string> = {
-  'Active': 'bg-green-100 text-green-700',
-  'Light': 'bg-amber-100 text-amber-700',
-  'Cold': 'bg-orange-100 text-orange-700',
-  'Dormant': 'bg-red-100 text-red-700',
+  'Active': 'bg-accent-green-bg text-accent-green',
+  'Light': 'bg-accent-yellow-bg text-accent-yellow',
+  'Cold': 'bg-accent-pink-bg text-accent-pink-strong',
+  'Dormant': 'bg-accent-red-bg text-accent-red',
 };
 const POD_COLORS: Record<string, string> = {
-  'Pod 1': 'bg-blue-100 text-blue-800',
-  'Pod 2': 'bg-purple-100 text-purple-800',
-  'Pod 3': 'bg-orange-100 text-orange-800',
-  'Pod 4': 'bg-green-100 text-green-800',
-  'Pod 5': 'bg-yellow-100 text-yellow-800',
-  'Floating': 'bg-slate-100 text-slate-700',
+  'Pod 1': 'bg-accent-purple-bg text-accent-purple',
+  'Pod 2': 'bg-accent-pink-bg text-accent-pink-strong',
+  'Pod 3': 'bg-accent-yellow-bg text-accent-yellow',
+  'Pod 4': 'bg-accent-green-bg text-accent-green',
+  'Pod 5': 'bg-accent-pink-bg text-accent-pink-strong',
+  'Floating': 'bg-line-soft text-ink-dim',
 };
 
 export default function Dashboard() {
@@ -138,26 +138,34 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-gradient-to-br from-zoca-blue to-zoca-accent text-white p-5 shadow-md">
-        <h1 className="text-xl font-bold">Zoca AM Transition Dashboard</h1>
-        <div className="text-xs opacity-85 mt-1">
-          Live · {data.customers.length} active customers · {data.ams.length} AMs · 5 pods · Generated {new Date(data.generated_at).toLocaleString()}
+      <header className="px-4 sm:px-8 py-5 sm:py-7 border-b border-line bg-canvas/60 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-ink leading-none">
+              <span className="text-pink-shimmer">AM Transition</span> Dashboard
+            </h1>
+            <div className="text-xs text-ink-dim mt-2 flex items-center gap-2">
+              <span className="live-dot inline-block"></span>
+              <span>Live · {data.customers.length} active customers · {data.ams.length} AMs · 5 pods</span>
+              <span className="text-ink-dim/60">· Generated {new Date(data.generated_at).toLocaleString()}</span>
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="p-5">
-        <div className="grid grid-cols-6 gap-2 mb-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 pb-16">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <Tile label="Showing" value={rows.length.toString()} sub={`$${Math.round(totalMrr).toLocaleString()} MRR`} />
           <Tile label="At Risk" value={atRisk.toString()} variant="red" />
           <Tile label="Dormant" value={dormant.toString()} variant="red" />
           <Tile label="Active app users" value={active.toString()} variant="green" />
           <Tile label="Open tickets" value={tickets.toString()} variant="amber" />
-          <Tile label="Marked for handoff" value={moving.toString()} variant="blue" />
+          <Tile label="Marked for handoff" value={moving.toString()} variant="pink" />
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-3 mb-3">
-          <div className="text-[10px] uppercase tracking-wide font-bold text-zoca-blue mb-2">AM Capacity (max {data.capacity_max ?? 130} per AM)</div>
-          <div className="flex flex-wrap gap-2">
+        <div className="bg-canvas border border-line rounded-2xl p-4 shadow-sm">
+          <div className="text-[11px] uppercase tracking-wide font-semibold text-ink-dim mb-3">AM Capacity (max {data.capacity_max ?? 130} per AM)</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
             {(data.capacities ?? []).map((cap) => {
               const max = data.capacity_max ?? 130;
               const proj = projected.get(cap.am) ?? cap.current;
@@ -165,15 +173,15 @@ export default function Dashboard() {
               const projOver = proj >= max;
               const changed = proj !== cap.current;
               return (
-                <div key={cap.am} className={`min-w-[150px] flex-1 bg-slate-50 rounded p-2 border ${projOver ? 'border-red-400' : 'border-slate-200'}`}>
-                  <div className="text-[11px] font-semibold text-slate-700 truncate">{cap.am}</div>
+                <div key={cap.am} className={`bg-elevated rounded-xl p-2.5 border transition ${projOver ? 'border-accent-red bg-accent-red-bg/40' : 'border-line'}`}>
+                  <div className="text-[11px] font-semibold text-ink truncate">{cap.am}</div>
                   <div className="flex items-baseline gap-1">
-                    <span className={`text-base font-bold ${projOver ? 'text-red-600' : projPct >= 90 ? 'text-amber-600' : 'text-zoca-blue'}`}>{proj}</span>
-                    <span className="text-[10px] text-slate-500">/ {max}</span>
-                    {changed && <span className="text-[10px] text-orange-700 ml-1">({proj > cap.current ? '+' : ''}{proj - cap.current})</span>}
+                    <span className={`text-lg font-bold ${projOver ? 'text-accent-red' : projPct >= 90 ? 'text-accent-yellow' : 'text-ink'}`}>{proj}</span>
+                    <span className="text-[10px] text-ink-dim">/ {max}</span>
+                    {changed && <span className="text-[10px] text-accent-pink-strong ml-1 font-semibold">({proj > cap.current ? '+' : ''}{proj - cap.current})</span>}
                   </div>
-                  <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
-                    <div className={`h-full ${projOver ? 'bg-red-500' : projPct >= 90 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, projPct)}%` }} />
+                  <div className="h-1.5 bg-line rounded-full overflow-hidden mt-1.5">
+                    <div className={`h-full transition-all ${projOver ? 'bg-accent-red' : projPct >= 90 ? 'bg-accent-yellow' : 'bg-accent-green'}`} style={{ width: `${Math.min(100, projPct)}%` }} />
                   </div>
                 </div>
               );
@@ -181,7 +189,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-3 mb-3 flex flex-wrap gap-2 items-center text-sm">
+        <div className="bg-canvas border border-line rounded-2xl p-4 flex flex-wrap gap-2 items-center text-sm shadow-sm">
           <Select label="Pod" value={filters.pod} onChange={(v) => setFilters({ ...filters, pod: v })} options={['', ...ALL_PODS]} />
           <Select label="Current AM" value={filters.am} onChange={(v) => setFilters({ ...filters, am: v })} options={['', ...ACTIVE_AMS]} />
           <Select label="Health" value={filters.health} onChange={(v) => setFilters({ ...filters, health: v })} options={['', 'At Risk', 'Watch', 'Healthy']} />
@@ -194,56 +202,56 @@ export default function Dashboard() {
             options={[['', 'All'], ['unpaid', 'Has unpaid'], ['cancel_scheduled', 'Cancel scheduled']]} />
           <input type="text" placeholder="search bizname / id / locality" value={filters.q}
             onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-            className="border border-slate-300 rounded px-2 py-1 text-sm min-w-[220px]" />
-          <button className="bg-white border border-zoca-blue text-zoca-blue px-3 py-1 rounded font-semibold"
+            className="border border-line bg-canvas rounded-md px-3 py-1.5 text-sm min-w-[220px] focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20" />
+          <button className="bg-canvas border border-line text-ink-muted hover:text-ink hover:border-accent-pink hover:bg-accent-pink-bg/40 px-3 py-1.5 rounded-md text-xs font-semibold transition"
             onClick={() => setFilters({ pod: '', am: '', health: '', engagement: '', moving: '', autopay: '', billing: '', q: '' })}>Reset</button>
         </div>
 
         <div className={`grid gap-3 ${selectedEid ? 'grid-cols-[1fr_460px]' : 'grid-cols-1'}`}>
-          <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-canvas border border-line rounded-2xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-zoca-blue text-white text-[11px] uppercase tracking-wide">
+                  <tr className="bg-elevated border-b border-line text-[11px] uppercase tracking-wide text-ink-muted">
                     {[
                       ['pod', 'Pod'], ['am_name', 'Current AM'], ['moving_to', 'Moving To'], ['bizname', 'Business'],
                       ['health', 'Health'], ['engagement', 'App'], ['auto_collection', 'Auto-Pay'], ['mrr', 'MRR'],
                       ['unpaid_invoice_count', 'Unpaid'], ['ytd_leads', 'YTD Leads'],
                       ['leads_marked_90d', 'Marked 90d'], ['tickets_open_count', 'Tix'], ['risks_count', 'Risks'],
                     ].map(([k, lbl]) => (
-                      <th key={k as string} onClick={() => setSort(k as string)} className="px-2 py-2 text-left cursor-pointer hover:bg-zoca-blueDeep font-semibold">{lbl}</th>
+                      <th key={k as string} onClick={() => setSort(k as string)} className="px-3 py-3 text-left cursor-pointer hover:text-accent-pink-strong hover:bg-accent-pink-bg/40 font-semibold transition">{lbl}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {rows.length === 0 ? (
-                    <tr><td colSpan={13} className="py-12 text-center text-slate-500">No customers match the current filters.</td></tr>
+                    <tr><td colSpan={13} className="py-12 text-center text-ink-dim">No customers match the current filters.</td></tr>
                   ) : rows.map((c) => {
                     const mt = getMovingTo(c.entity_id);
                     return (
                       <tr key={c.entity_id} onClick={() => setSelectedEid(c.entity_id)}
-                        className={`border-b border-slate-100 cursor-pointer hover:bg-blue-50 ${selectedEid === c.entity_id ? 'bg-blue-100' : ''}`}>
-                        <td className="px-2 py-2"><Chip className={POD_COLORS[c.pod]}>{c.pod}</Chip></td>
-                        <td className="px-2 py-2 text-sm">{c.am_name}</td>
-                        <td className="px-2 py-2">{mt ? <span className="bg-orange-100 text-orange-800 font-semibold px-2 py-0.5 rounded text-xs">→ {mt}</span> : <span className="text-slate-400 text-xs">—</span>}</td>
-                        <td className="px-2 py-2"><div className="font-semibold text-zoca-blue">{c.bizname || '—'}</div><div className="text-xs text-slate-500">{[c.locality, c.state].filter(Boolean).join(', ')}</div></td>
-                        <td className="px-2 py-2"><Chip className={HEALTH_COLORS[c.health]}>{c.health}</Chip></td>
-                        <td className="px-2 py-2"><Chip className={ENG_COLORS[c.engagement_tier]}>{c.engagement_tier}</Chip></td>
-                        <td className="px-2 py-2">
-                          {c.auto_collection === 'on' && <Chip className="bg-green-100 text-green-700">ON</Chip>}
-                          {c.auto_collection === 'off' && <Chip className="bg-red-100 text-red-700">OFF</Chip>}
-                          {c.auto_collection == null && <span className="text-slate-400 text-xs">—</span>}
+                        className={`border-b border-line-soft cursor-pointer transition ${selectedEid === c.entity_id ? 'bg-accent-pink-bg/40' : 'hover:bg-elevated'}`}>
+                        <td className="px-3 py-2.5"><Chip className={POD_COLORS[c.pod]}>{c.pod}</Chip></td>
+                        <td className="px-3 py-2.5 text-sm text-ink">{c.am_name}</td>
+                        <td className="px-3 py-2.5">{mt ? <span className="bg-accent-pink-bg text-accent-pink-strong font-semibold px-2 py-0.5 rounded-full text-xs">→ {mt}</span> : <span className="text-ink-dim text-xs">—</span>}</td>
+                        <td className="px-3 py-2.5"><div className="font-semibold text-ink">{c.bizname || '—'}</div><div className="text-xs text-ink-dim">{[c.locality, c.state].filter(Boolean).join(', ')}</div></td>
+                        <td className="px-3 py-2.5"><Chip className={HEALTH_COLORS[c.health]}>{c.health}</Chip></td>
+                        <td className="px-3 py-2.5"><Chip className={ENG_COLORS[c.engagement_tier]}>{c.engagement_tier}</Chip></td>
+                        <td className="px-3 py-2.5">
+                          {c.auto_collection === 'on' && <Chip className="bg-accent-green-bg text-accent-green">ON</Chip>}
+                          {c.auto_collection === 'off' && <Chip className="bg-accent-red-bg text-accent-red">OFF</Chip>}
+                          {c.auto_collection == null && <span className="text-ink-dim text-xs">—</span>}
                         </td>
-                        <td className="px-2 py-2 text-right font-mono text-sm">${Math.round(c.mrr).toLocaleString()}</td>
-                        <td className="px-2 py-2 text-right text-sm">
+                        <td className="px-3 py-2.5 text-right font-mono text-sm text-ink tabular-nums">${Math.round(c.mrr).toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right text-sm tabular-nums">
                           {c.unpaid_invoice_count > 0
-                            ? <span className="text-red-600 font-semibold">{c.unpaid_invoice_count} (${Math.round(c.unpaid_total_cents / 100).toLocaleString()})</span>
-                            : <span className="text-slate-400">—</span>}
+                            ? <span className="text-accent-red font-semibold">{c.unpaid_invoice_count} (${Math.round(c.unpaid_total_cents / 100).toLocaleString()})</span>
+                            : <span className="text-ink-dim">—</span>}
                         </td>
-                        <td className="px-2 py-2 text-right text-sm">{c.ytd_leads}</td>
-                        <td className="px-2 py-2 text-right text-sm">{c.leads_marked_90d}</td>
-                        <td className="px-2 py-2 text-right text-sm">{c.tickets_open_count}{c.tickets_high_priority_count ? <span className="text-red-600 font-bold"> ({c.tickets_high_priority_count}H)</span> : ''}</td>
-                        <td className="px-2 py-2 text-sm">{c.risks.length || <span className="text-slate-400">none</span>}</td>
+                        <td className="px-3 py-2.5 text-right text-sm text-ink tabular-nums">{c.ytd_leads}</td>
+                        <td className="px-3 py-2.5 text-right text-sm text-ink tabular-nums">{c.leads_marked_90d}</td>
+                        <td className="px-3 py-2.5 text-right text-sm text-ink tabular-nums">{c.tickets_open_count}{c.tickets_high_priority_count ? <span className="text-accent-red font-bold"> ({c.tickets_high_priority_count}H)</span> : ''}</td>
+                        <td className="px-3 py-2.5 text-sm text-ink-muted">{c.risks.length || <span className="text-ink-dim">none</span>}</td>
                       </tr>
                     );
                   })}
@@ -266,19 +274,24 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="text-xs text-slate-500 mt-4">Phase 1 MVP · Moving To assignments are stored in your browser only. Phase 2 wires Vercel Postgres for shared state.</div>
+        <div className="text-xs text-ink-dim mt-6 text-center">Phase 1 MVP · Moving To assignments are stored in your browser only. Phase 2 wires Vercel Postgres for shared state.</div>
       </div>
     </div>
   );
 }
 
-function Tile({ label, value, sub, variant }: { label: string; value: string; sub?: string; variant?: 'red' | 'green' | 'amber' | 'blue' }) {
-  const cls = variant === 'red' ? 'text-red-600' : variant === 'green' ? 'text-green-600' : variant === 'amber' ? 'text-amber-600' : variant === 'blue' ? 'text-zoca-accent' : 'text-zoca-blue';
+function Tile({ label, value, sub, variant }: { label: string; value: string; sub?: string; variant?: 'red' | 'green' | 'amber' | 'blue' | 'pink' }) {
+  const cls = variant === 'red' ? 'text-accent-red'
+    : variant === 'green' ? 'text-accent-green'
+    : variant === 'amber' ? 'text-accent-yellow'
+    : variant === 'pink' ? 'text-accent-pink-strong'
+    : variant === 'blue' ? 'text-accent-purple'
+    : 'text-ink';
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-3">
-      <div className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">{label}</div>
-      <div className={`text-2xl font-bold ${cls}`}>{value}</div>
-      {sub && <div className="text-[11px] text-slate-500">{sub}</div>}
+    <div className="bg-canvas border border-line rounded-xl p-4 shadow-sm hover:border-accent-pink/40 transition">
+      <div className="text-[10px] text-ink-dim uppercase tracking-wide font-semibold">{label}</div>
+      <div className={`text-3xl font-extrabold mt-1 ${cls} tabular-nums leading-none`}>{value}</div>
+      {sub && <div className="text-[11px] text-ink-dim mt-1">{sub}</div>}
     </div>
   );
 }
@@ -289,9 +302,9 @@ function Chip({ className, children }: { className?: string; children: React.Rea
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
   return (
-    <label className="flex items-center gap-1 text-xs text-slate-600 font-semibold">
+    <label className="flex items-center gap-1.5 text-xs text-ink-muted font-semibold">
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-sm font-normal min-w-[120px]">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-line bg-canvas rounded-md px-2 py-1.5 text-sm font-normal text-ink min-w-[120px] focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20">
         {options.map((o, i) => <option key={i} value={o}>{o || 'All'}</option>)}
       </select>
     </label>
@@ -299,9 +312,9 @@ function Select({ label, value, onChange, options }: { label: string; value: str
 }
 function SelectKv({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
-    <label className="flex items-center gap-1 text-xs text-slate-600 font-semibold">
+    <label className="flex items-center gap-1.5 text-xs text-ink-muted font-semibold">
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-sm font-normal min-w-[140px]">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-line bg-canvas rounded-md px-2 py-1.5 text-sm font-normal text-ink min-w-[140px] focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20">
         {options.map(([v, l], i) => <option key={i} value={v}>{l}</option>)}
       </select>
     </label>
@@ -317,37 +330,37 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
   const targetWillExceed = targetLoad != null && targetLoad > capacityMax;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4 sticky top-3 max-h-[calc(100vh-24px)] overflow-y-auto relative">
-      <button onClick={onClose} className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
-      <h2 className="text-lg font-bold text-zoca-blue">{c.bizname}</h2>
-      <div className="text-xs text-slate-500 mb-2">{[c.locality, c.state].filter(Boolean).join(', ')} · {c.primary_category} · {c.customer_id}</div>
-      <div className="flex gap-1 mb-2">
+    <div className="bg-canvas border border-line rounded-2xl p-5 sticky top-3 max-h-[calc(100vh-24px)] overflow-y-auto relative shadow-sm">
+      <button onClick={onClose} className="absolute top-3 right-3 text-ink-dim hover:text-ink text-xl leading-none">×</button>
+      <h2 className="text-xl font-extrabold text-ink leading-tight pr-6">{c.bizname}</h2>
+      <div className="text-xs text-ink-dim mb-3 mt-1">{[c.locality, c.state].filter(Boolean).join(', ')} · {c.primary_category} · {c.customer_id}</div>
+      <div className="flex gap-1.5 flex-wrap mb-3">
         <Chip className={POD_COLORS[c.pod]}>{c.pod}</Chip>
         <Chip className={HEALTH_COLORS[c.health]}>{c.health}</Chip>
         <Chip className={ENG_COLORS[c.engagement_tier]}>App: {c.engagement_tier}</Chip>
       </div>
-      <div className="text-2xl font-bold text-zoca-blue mb-2">${Math.round(c.mrr).toLocaleString()}/mo</div>
+      <div className="text-3xl font-extrabold text-pink-gradient mb-1 tabular-nums leading-none">${Math.round(c.mrr).toLocaleString()}<span className="text-sm font-semibold text-ink-dim">/mo</span></div>
 
       <Section title="Handoff assignment">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-600">Move to →</span>
-          <select value={movingTo} onChange={(e) => onMovingChange(e.target.value)} className="border border-slate-300 rounded px-2 py-1 text-xs">
+          <span className="text-xs font-semibold text-ink-muted">Move to →</span>
+          <select value={movingTo} onChange={(e) => onMovingChange(e.target.value)} className="border border-line bg-canvas rounded-md px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20">
             <option value="">— not assigned —</option>
             {ALL_DROPDOWN_AMS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         {targetLoad != null && (
-          <div className={`mt-2 text-xs px-2 py-1 rounded ${targetWillExceed ? 'bg-red-100 text-red-700 font-semibold' : 'bg-slate-100 text-slate-700'}`}>
+          <div className={`mt-2 text-xs px-3 py-2 rounded-lg ${targetWillExceed ? 'bg-accent-red-bg text-accent-red font-semibold' : 'bg-elevated text-ink-muted'}`}>
             {targetWillExceed && '⚠ '}
-            {movingTo}'s projected load: {targetLoad} / {capacityMax}
+            {movingTo}&apos;s projected load: {targetLoad} / {capacityMax}
             {targetWillExceed && ` — exceeds capacity by ${targetLoad - capacityMax}`}
           </div>
         )}
       </Section>
 
       <Section title="Risks & signals">
-        {c.risks.length === 0 ? <div className="text-xs text-slate-400">No active risk signals.</div>
-          : c.risks.map((r, i) => <div key={i} className="bg-red-100 text-red-700 px-2 py-1 rounded mb-1 text-xs font-medium">{r}</div>)}
+        {c.risks.length === 0 ? <div className="text-xs text-ink-dim">No active risk signals.</div>
+          : c.risks.map((r, i) => <div key={i} className="bg-accent-red-bg text-accent-red px-3 py-1.5 rounded-lg mb-1.5 text-xs font-medium">{r}</div>)}
       </Section>
 
       <Section title="Billing (Chargebee)">
@@ -360,7 +373,7 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
           <Cell label="Cancel scheduled" value={c.cancel_scheduled_at ? new Date(c.cancel_scheduled_at).toLocaleDateString() : '—'} red={!!c.cancel_scheduled_at} />
         </div>
         {c.oldest_unpaid_due_date && (
-          <div className="mt-2 text-xs text-red-700 bg-red-50 px-2 py-1 rounded">
+          <div className="mt-2 text-xs text-accent-red bg-accent-red-bg px-3 py-1.5 rounded-lg">
             Oldest unpaid invoice due: {new Date(c.oldest_unpaid_due_date).toLocaleDateString()}
           </div>
         )}
@@ -377,18 +390,18 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
           <Cell label="6mo Lead Prediction" value={c.predicted_6mo_leads == null ? '—' : String(c.predicted_6mo_leads)} />
           <Cell label="6mo Revenue Prediction" value={c.predicted_6mo_revenue == null ? '—' : `$${Math.round(c.predicted_6mo_revenue).toLocaleString()}`} />
         </div>
-        <div className="mt-1 text-[10px] text-slate-400 italic">Predictions are internal-only. Do not surface to customers.</div>
+        <div className="mt-1 text-[10px] text-ink-dim italic">Predictions are internal-only. Do not surface to customers.</div>
       </Section>
 
       <Section title="AM history">
         <div className="text-xs">
           <strong>{c.am_history_count ?? 0}</strong> distinct AM{(c.am_history_count ?? 0) === 1 ? '' : 's'} ever assigned
-          {(c.am_history_count ?? 0) >= 3 && <span className="text-red-600 font-bold ml-1">⚠ AM churn</span>}
+          {(c.am_history_count ?? 0) >= 3 && <span className="text-accent-red font-bold ml-1">⚠ AM churn</span>}
         </div>
         {(c.am_history_names?.length ?? 0) > 0 && (
-          <div className="text-xs text-slate-700 mt-1">
+          <div className="text-xs text-ink-muted mt-1.5">
             {(c.am_history_names ?? []).map((n, i) => (
-              <span key={i}>{i > 0 && <span className="text-slate-400"> → </span>}<span className={n === c.am_name ? 'font-semibold text-zoca-blue' : ''}>{n}</span></span>
+              <span key={i}>{i > 0 && <span className="text-ink-dim"> → </span>}<span className={n === c.am_name ? 'font-semibold text-accent-pink-strong' : ''}>{n}</span></span>
             ))}
           </div>
         )}
@@ -407,12 +420,12 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
 
       <Section title="Tickets (full history)">
         <div className="text-xs flex gap-3">
-          <span>Open: <strong className={c.tickets_open_count > 0 ? 'text-red-600' : 'text-slate-700'}>{c.tickets_open_count}</strong>{c.tickets_high_priority_count ? <span className="text-red-600 font-bold"> · {c.tickets_high_priority_count} HIGH</span> : ''}</span>
-          <span>Resolved (history): <strong className="text-slate-700">{c.tickets_resolved_history_count ?? 0}</strong></span>
-          <span>Total ever: <strong className="text-slate-700">{c.tickets_total_history_count ?? 0}</strong></span>
+          <span>Open: <strong className={c.tickets_open_count > 0 ? 'text-accent-red' : 'text-ink'}>{c.tickets_open_count}</strong>{c.tickets_high_priority_count ? <span className="text-accent-red font-bold"> · {c.tickets_high_priority_count} HIGH</span> : ''}</span>
+          <span>Resolved (history): <strong className="text-ink">{c.tickets_resolved_history_count ?? 0}</strong></span>
+          <span>Total ever: <strong className="text-ink">{c.tickets_total_history_count ?? 0}</strong></span>
         </div>
         {(c.tickets_total_history_count ?? 0) >= 5 && (
-          <div className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded mt-1">
+          <div className="text-[11px] text-accent-yellow bg-accent-yellow-bg px-3 py-1.5 rounded-lg mt-2">
             ⚠ This account has had {c.tickets_total_history_count} total tickets — high-history accounts churn at 2-3× the rate.
           </div>
         )}
@@ -420,14 +433,14 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
 
       <Section title="Other signals">
         <div className="text-xs flex flex-col gap-1">
-          {c.has_handover_brief && <div className="bg-blue-50 text-blue-800 px-2 py-1 rounded">Has prior AE→AM handover brief on file</div>}
-          {c.has_audit && <div className="bg-purple-50 text-purple-800 px-2 py-1 rounded">Has GBP audit data</div>}
-          {!c.has_handover_brief && !c.has_audit && <div className="text-slate-400">—</div>}
+          {c.has_handover_brief && <div className="bg-accent-pink-bg text-accent-pink-strong px-3 py-1.5 rounded-lg font-medium">Has prior AE→AM handover brief on file</div>}
+          {c.has_audit && <div className="bg-accent-purple-bg text-accent-purple px-3 py-1.5 rounded-lg font-medium">Has GBP audit data</div>}
+          {!c.has_handover_brief && !c.has_audit && <div className="text-ink-dim">—</div>}
         </div>
       </Section>
 
       <Section title="Notes (saved locally)">
-        <textarea className="w-full min-h-[80px] p-2 border border-slate-300 rounded text-xs" value={notes} onChange={(e) => onNotesChange(e.target.value)} placeholder="Add transition notes..." />
+        <textarea className="w-full min-h-[80px] p-2.5 border border-line bg-canvas rounded-lg text-xs text-ink focus:outline-none focus:border-accent-pink focus:ring-2 focus:ring-accent-pink/20" value={notes} onChange={(e) => onNotesChange(e.target.value)} placeholder="Add transition notes..." />
       </Section>
     </div>
   );
@@ -435,8 +448,8 @@ function DetailPanel({ c, movingTo, notes, projected, capacityMax, onMovingChang
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-3">
-      <div className="text-[10px] uppercase tracking-wide font-bold text-zoca-blue border-b border-slate-200 pb-1 mb-2">{title}</div>
+    <div className="mt-4">
+      <div className="text-[10px] uppercase tracking-wide font-bold text-accent-pink-strong border-b border-line pb-1.5 mb-2.5">{title}</div>
       {children}
     </div>
   );
@@ -444,9 +457,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Cell({ label, value, red }: { label: string; value: string; red?: boolean }) {
   return (
-    <div className="bg-slate-50 rounded p-2">
-      <div className="text-[10px] text-slate-500">{label}</div>
-      <div className={`text-base font-bold ${red ? 'text-red-600' : 'text-zoca-blue'}`}>{value}</div>
+    <div className="bg-elevated rounded-lg p-2.5 border border-line">
+      <div className="text-[10px] text-ink-dim font-semibold uppercase tracking-wide">{label}</div>
+      <div className={`text-base font-bold mt-0.5 tabular-nums ${red ? 'text-accent-red' : 'text-ink'}`}>{value}</div>
     </div>
   );
 }
@@ -454,7 +467,10 @@ function Cell({ label, value, red }: { label: string; value: string; red?: boole
 function Loading() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="text-zoca-blue font-semibold">Loading customers from Metabase…</div>
+      <div className="text-center">
+        <div className="text-accent-pink font-semibold text-lg">Loading customers from Metabase…</div>
+        <div className="text-xs text-ink-dim mt-2">Pulling live data from BaseSheet, CX, Mixpanel, GBP, Chargebee — about 8 seconds.</div>
+      </div>
     </div>
   );
 }
@@ -462,10 +478,10 @@ function Loading() {
 function ErrorView({ msg }: { msg: string }) {
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="bg-red-50 border border-red-300 rounded-lg p-6 max-w-2xl">
-        <div className="text-red-700 font-bold mb-2">Failed to load data</div>
-        <pre className="text-xs text-red-800 whitespace-pre-wrap">{msg}</pre>
-        <div className="text-xs text-red-600 mt-3">Check that <code>METABASE_API_KEY</code> is set in your environment.</div>
+      <div className="bg-accent-red-bg border border-accent-red rounded-2xl p-6 max-w-2xl">
+        <div className="text-accent-red font-bold mb-2">Failed to load data</div>
+        <pre className="text-xs text-accent-red whitespace-pre-wrap">{msg}</pre>
+        <div className="text-xs text-ink-dim mt-3">Check that <code className="bg-canvas px-1 rounded">METABASE_API_KEY</code> is set in your Vercel environment.</div>
       </div>
     </div>
   );
